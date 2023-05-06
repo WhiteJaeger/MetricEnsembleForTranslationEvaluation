@@ -64,9 +64,9 @@ class MyDataset(Dataset):
         return ref_str, hyp_str, torch.tensor([target], dtype=torch.float32)
 
 
-class MyNetwork(nn.Module):
+class EMEQT(nn.Module):
     def __init__(self):
-        super(MyNetwork, self).__init__()
+        super(EMEQT, self).__init__()
 
         self.n_scores = 14
         self.spacy_model = spacy.load('en_core_web_md')
@@ -147,11 +147,11 @@ def train(net, optimizer, criterion, dataloader, num_epochs) -> None:
     for epoch in range(num_epochs):
         running_loss = 0.0
         for i, batch in enumerate(dataloader):
-            ref_str, hyp_str, target = batch
+            ref_strs, hyp_strs, targets = batch
 
             # Set the gradients to zero
             optimizer.zero_grad()
-            for ref, hyp, tar in zip(ref_str, hyp_str, target):
+            for ref, hyp, tar in zip(ref_strs, hyp_strs, targets):
                 # Compute the output of the network
                 output = net(ref, hyp)
 
@@ -172,23 +172,25 @@ def train(net, optimizer, criterion, dataloader, num_epochs) -> None:
 
 if __name__ == '__main__':
     dataset = MyDataset(DATA)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=128, shuffle=True)
 
     # Instantiate the network and optimizer
-    net = MyNetwork()
-    optimizer = optim.SGD(net.parameters(), lr=0.0001, weight_decay=1e-5)
+    net = EMEQT()
+    optimizer = optim.Adam(net.parameters(), lr=0.001, weight_decay=1e-5)
 
     # Define the loss function
     criterion = nn.MSELoss()
-
-    # Train the network
-    train(net=net,
-          optimizer=optimizer,
-          criterion=criterion,
-          dataloader=dataloader,
-          num_epochs=40)
-
-    # Save the network
-    current_date = datetime.today().strftime('%Y-%m-%d_%H:%M:%S')
-    save_path = Path(__file__).parent.joinpath('models').joinpath(f'metric_ensemble_{current_date}.pt')
-    torch.save(net, save_path)
+    try:
+        # Train the network
+        train(net=net,
+              optimizer=optimizer,
+              criterion=criterion,
+              dataloader=dataloader,
+              num_epochs=50)
+    except:
+        pass
+    finally:
+        # Save the network
+        current_date = datetime.today().strftime('%Y-%m-%d_%H:%M:%S')
+        save_path = Path(__file__).parent.joinpath('models').joinpath(f'metric_ensemble_{current_date}.pt')
+        torch.save(net, save_path)

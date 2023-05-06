@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 
 import spacy
+from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,6 +13,7 @@ from nltk.translate.meteor_score import single_meteor_score
 from nltk.translate.nist_score import sentence_nist
 from rouge import Rouge
 from subtree_metric import stm
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset, DataLoader
 
 from data_preparation import DATA
@@ -64,9 +66,9 @@ class MyDataset(Dataset):
         return ref_str, hyp_str, torch.tensor([target], dtype=torch.float32)
 
 
-class MyNetwork(nn.Module):
+class EMEQT(nn.Module):
     def __init__(self):
-        super(MyNetwork, self).__init__()
+        super(EMEQT, self).__init__()
 
         self.n_scores = 14
         self.spacy_model = spacy.load('en_core_web_md')
@@ -134,15 +136,22 @@ class MyNetwork(nn.Module):
         return x
 
 
-def train(net, optimizer, criterion, dataloader, num_epochs) -> None:
+def train(net,
+          optimizer,
+          criterion,
+          dataloader_train,
+          reducer,
+          dataloader_val,
+          num_epochs) -> None:
     for epoch in range(num_epochs):
         running_loss = 0.0
-        for i, batch in enumerate(dataloader):
-            ref_str, hyp_str, target = batch
+        net.train()
+        for i, batch in enumerate(dataloader_train):
+            ref_strs, hyp_strs, targets = batch
 
             # Set the gradients to zero
             optimizer.zero_grad()
-            for ref, hyp, tar in zip(ref_str, hyp_str, target):
+            for ref, hyp, tar in zip(ref_strs, hyp_strs, targets):
                 # Compute the output of the network
                 output = net(ref, hyp)
 
@@ -158,28 +167,70 @@ def train(net, optimizer, criterion, dataloader, num_epochs) -> None:
                 running_loss += loss.item()
 
         # Print the average loss for the epoch
-        print("Epoch {}: Loss = {}".format(epoch + 1, running_loss / len(dataloader)))
+        print("Training. Epoch {}: Loss = {}".format(epoch + 1, running_loss / len(dataloader_train)))
+
+        running_loss_val = 0.0
+        net.eval()
+        for i, batch in enumerate(dataloader_val):
+            ref_strs, hyp_strs, targets = batch
+
+            # Set the gradients to zero
+            optimizer.zero_grad()
+            for ref, hyp, tar in zip(ref_strs, hyp_strs, targets):
+                # Compute the output of the network
+                output = net(ref, hyp)
+
+                # Compute the loss
+                loss = criterion(output, tar)
+
+                # Backpropagate the gradients
+                loss.backward()
+
+                # Update the parameters
+                optimizer.step()
+
+                running_loss_val += loss.item()
+
+        reducer.step(running_loss_val / len(dataloader_val))
+
+        # Print the average loss for the epoch
+        print("Eval. Epoch {}: Loss = {}".format(epoch + 1, running_loss_val / len(dataloader_val)))
+        print('-' * 25)
 
 
 if __name__ == '__main__':
-    dataset = MyDataset(DATA)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    DATA_TRAIN, DATA_VAL = train_test_split(DATA, train_size=0.9, test_size=0.1, shuffle=True)
+    print(f'TRAIN LENGTH: {len(DATA_TRAIN)}, VAL LENGTH: {len(DATA_VAL)}')
+    dataset_train = MyDataset(DATA_TRAIN)
+    dataloader_train = DataLoader(dataset_train, batch_size=32, shuffle=True)
+
+    dataset_val = MyDataset(DATA_VAL)
+    dataloader_val = DataLoader(dataset_val, batch_size=32, shuffle=True)
 
     # Instantiate the network and optimizer
-    net = MyNetwork()
-    optimizer = optim.SGD(net.parameters(), lr=0.0001, weight_decay=1e-5)
+    net = EMEQT()
+
+    optimizer = optim.Adam(net.parameters(), lr=0.0001, weight_decay=1e-5)
 
     # Define the loss function
     criterion = nn.MSELoss()
 
-    # Train the network
-    train(net=net,
-          optimizer=optimizer,
-          criterion=criterion,
-          dataloader=dataloader,
-          num_epochs=70)
+    scheduler = ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=5)
 
-    # Save the network
-    current_date = datetime.today().strftime('%Y-%m-%d_%H:%M:%S')
-    save_path = Path(__file__).parent.joinpath('models').joinpath(f'metric_ensemble_conv_{current_date}.pt')
-    torch.save(net, save_path)
+    # Train the network
+    try:
+        # Train the network
+        train(net=net,
+              optimizer=optimizer,
+              criterion=criterion,
+              dataloader_train=dataloader_train,
+              dataloader_val=dataloader_val,
+              reducer=scheduler,
+              num_epochs=100)
+    except:
+        pass
+    finally:
+        # Save the network
+        current_date = datetime.today().strftime('%Y-%m-%d_%H:%M:%S')
+        save_path = Path(__file__).parent.joinpath('models').joinpath(f'metric_ensemble_conv_{current_date}.pt')
+        torch.save(net, save_path)

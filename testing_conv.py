@@ -2,9 +2,9 @@ from pathlib import Path
 
 import torch
 
-from training import EMEQT
+from training_conv import EMEQT
 
-model_name = 'metric_ensemble_2023-05-04_11:54:02.pt'
+model_name = 'metric_ensemble_conv_2023-05-05_23:53:42.pt'
 model_path = Path(__file__).parent.joinpath('models'). \
     joinpath(model_name)
 

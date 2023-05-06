@@ -7,15 +7,15 @@ from nltk.tokenize import word_tokenize
 from nltk.translate import bleu_score, meteor_score, chrf_score
 from subtree_metric import stm
 
-from nn_training import MyNetwork, POS_WEIGHTS
+from training_conv import EMEQT, POS_WEIGHTS
 
 spacy_model = spacy.load('en_core_web_md')
 
-checkpoint = None
+model_name = 'metric_ensemble_conv_2023-05-04_19:41:11.pt'
 model_path = Path(__file__).parent.joinpath('models'). \
-    joinpath(f'metric_ensemble_{checkpoint}.pt')
+    joinpath(model_name)
 
-net: MyNetwork = torch.load(model_path)
+net: EMEQT = torch.load(model_path)
 
 
 def metric_wrapper_nn(hypothesis: str, reference: str):
@@ -58,7 +58,7 @@ evs = data.EvalSet('wmt20', 'ru-en')
 scores = {level: {} for level in ['seg']}
 references = evs.all_refs[evs.std_ref]
 for s, hypotheses in evs.sys_outputs.items():
-    scores['seg'][s] = [metric_wrapper_stm_augmented(h, r) for h, r in zip(hypotheses, references)]
+    scores['seg'][s] = [metric_wrapper_nn(h, r) for h, r in zip(hypotheses, references)]
 
 # Official WMT correlations
 for level in ['seg']:
