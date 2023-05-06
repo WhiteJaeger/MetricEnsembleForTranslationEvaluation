@@ -12,6 +12,10 @@ net: EMEQT = torch.load(model_path)
 
 net.eval()
 
+print(net)
+
+print(f'TOTAL # OF PARAMETERS: {sum(p.numel() for p in net.parameters())}')
+
 print(net("The slow black plane flies over the big city.",
           "The fast brown fox jumps over the lazy dog."))
 

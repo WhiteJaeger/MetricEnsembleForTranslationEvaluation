@@ -124,7 +124,7 @@ class EMEQT(nn.Module):
                                ]],
                               dtype=torch.float32)
 
-        # Pass the scores through the fully-connected layers
+        # Pass the scores through the convolutional and fully-connected layers
         x = scores.unsqueeze(1)  # add a channel dimension
         x = nn.functional.relu(self.conv1(x))
         x = nn.functional.relu(self.conv2(x))
